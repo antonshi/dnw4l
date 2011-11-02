@@ -124,7 +124,7 @@ static struct board_info * parse_config(char *file)
 		if (line[0] == '#')
 			continue;
 
-		printf("%s\n", line);
+		DPRINT("%s\n", line);
 
 		curr = (struct board_info *) malloc(sizeof (struct board_info));
 		if (curr == NULL) {
@@ -230,7 +230,7 @@ static int send_file(struct board *brd)
 	int bytes_done = 0;
 	int ret = 0;
 
-	printf("csum = 0x%04x\n", (unsigned int) csum);
+	DPRINT("csum = 0x%04x\n", (unsigned int) csum);
 
 	/* 4 bytes address, 4 bytes length, data, 2 bytes csum */
 
@@ -256,7 +256,7 @@ static int send_file(struct board *brd)
 	buf[len + 8] = (unsigned char) ((csum & 0xff));
 	buf[len + 9] = (unsigned char) ((csum >> 8) & 0xff);
 
-	printf("send_file: addr = 0x%08x, len = 0x%08x\n", addr, len);
+	printf("%s: len = 0x%08x\n", __func__, len);
 
 	while (len_total > 0) {
 		ret = libusb_bulk_transfer(brd->hdl, brd->info->ep_out,

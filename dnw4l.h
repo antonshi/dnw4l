@@ -1,6 +1,16 @@
 #ifndef BOOT_USB_H
 #define BOOT_USB_H __FILE__
 
+#if 0
+#define DNW4L_DEBUG
+#endif
+
+#ifdef DNW4L_DEBUG
+#define DPRINT(fmt, args...)	fprintf(stderr, fmt, ## args)
+#else
+#define DPRINT(fmt, args...)
+#endif
+
 #define DEF_CONF_FILE		"./board.conf"
 #define NUM_INFO_FIELDS		8
 #define DELIM			','
