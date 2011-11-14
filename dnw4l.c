@@ -51,22 +51,18 @@ static int parse_cline(char *line, struct board_info *info)
 		unsigned int bNumConfigurations;
 	} info_data;
 
-	ret = sscanf(line, "%31[^','],%2u,0x%8x,0x%8x,0x%8x,%3u",
+	ret = sscanf(line, "%31[^','],0x%8x,0x%4x,0x%4x",
 		     info->dev_name,
-		     &info_data.ep_out,
 		     &info_data.ram_base,
 		     &info_data.idVendor,
-		     &info_data.idProduct,
-		     &info_data.bNumConfigurations);
-	if (ret != 6)
+		     &info_data.idProduct);
+	if (ret != 4)
 		return -1;
 
 	/* FIXME: check limits */
-	info->ep_out = info_data.ep_out;
 	info->ram_base = info_data.ram_base;
 	info->idVendor = info_data.idVendor;
 	info->idProduct = info_data.idProduct;
-	info->bNumConfigurations = info_data.bNumConfigurations;
 
 	return 0;
 }
@@ -97,11 +93,9 @@ static struct board_info * parse_config(char *file)
 		fprintf(stderr, "Cannot create default board configuration\n");
 	else {
 		/* Default data */
-		curr->ep_out = 2;
 		curr->ram_base = 0x40008000;
 		curr->idVendor = 0x04e8;
 		curr->idProduct	= 0x1234;
-		curr->bNumConfigurations = 1;
 
 		curr->next = head;
 		head = curr;
@@ -113,7 +107,7 @@ static struct board_info * parse_config(char *file)
 	f = fopen(file, "r");
 	if (f == NULL) {
 		fprintf(stderr, "Cannot open config file, "
-				"will use default configuration\n");
+				"will use default board info\n");
 		return head;
 	}
 
@@ -128,7 +122,7 @@ static struct board_info * parse_config(char *file)
 
 		curr = (struct board_info *) malloc(sizeof (struct board_info));
 		if (curr == NULL) {
-			fprintf(stderr, "Cannot allocate memory"
+			fprintf(stderr, "Cannot allocate memory "
 					"for board description\n");
 			fclose(f);
 			return head;
@@ -140,7 +134,10 @@ static struct board_info * parse_config(char *file)
 
 		ret = parse_cline(line, curr);
 		if (ret < 0) {
-			fprintf(stderr, "Cannot parse config line\n");
+			fprintf(stderr, "Cannot parse config line\n"
+					"Config line format:\n"
+					"<dev_name>,<ram_base>,"
+					"<idVendor>,<idProduct>\n");
 			free(curr);
 			continue;
 		}
@@ -152,6 +149,80 @@ static struct board_info * parse_config(char *file)
 	fclose(f);
 
 	return head;
+}
+
+/**
+ * get_epnum - get bulk out endpoint number
+ * @brd: The board instance.
+ *
+ * Return value is an endpoint number (> 0) or status.
+ */
+static int get_epnum(struct board *brd)
+{
+	struct libusb_config_descriptor *confdesc;
+	const struct libusb_interface *intf;
+	const struct libusb_interface_descriptor *intfdesc;
+	const struct libusb_endpoint_descriptor *epdesc;
+	int i, num_of_eps;
+	int epdir, epnum, eptype;
+	int ret;
+
+	/* Check number of configurations */
+	if (brd->desc.bNumConfigurations > 1) {
+		fprintf(stderr, "Device with multiple configurations "
+				"is not supported (%d)\n",
+				brd->desc.bNumConfigurations);
+		return -1;
+	}
+
+	/* Check number of interfaces */
+	ret = libusb_get_config_descriptor(brd->dev, 0, &confdesc);
+	if (ret < 0) {
+		fprintf(stderr, "Failed to get config descriptor (%d)\n", ret);
+		return -1;
+	}
+
+	if (confdesc->bNumInterfaces > 1) {
+		fprintf(stderr, "Configurations with multiple interfaces "
+				"are not supported (%d)\n",
+				confdesc->bNumInterfaces);
+		ret = -1;
+		goto err;
+	}
+
+	intf = &confdesc->interface[0];
+	if (intf->num_altsetting > 1) {
+		fprintf(stderr, "Interfaces with multiple altsettings "
+				"are not supported (%d)\n",
+				intf->num_altsetting);
+		ret = -1;
+		goto err;
+	}
+
+	intfdesc = &intf->altsetting[0];
+	num_of_eps = intfdesc->bNumEndpoints;
+	DPRINT("Number of endpoints is %d\n", num_of_eps);
+
+	ret = 0;
+
+	for (i = 0; i < num_of_eps; i++) {
+		epdesc = &intfdesc->endpoint[i];
+
+		epdir = (epdesc->bEndpointAddress & 0x80) >> 7;
+		epnum = epdesc->bEndpointAddress & 0x0f;
+		eptype = epdesc->bmAttributes & 3;
+
+		if (epdir == LIBUSB_ENDPOINT_OUT &&
+		    eptype == LIBUSB_TRANSFER_TYPE_BULK) {
+
+			ret = epnum;
+			break;
+		}
+	}
+
+err:
+	libusb_free_config_descriptor(confdesc);
+	return ret;
 }
 
 /**
@@ -188,6 +259,7 @@ static int find_device(libusb_device **devs, struct board *brd)
 			if (board_found(&desc, brd_info)) {
 				brd->info = brd_info;
 				brd->dev = dev;
+				brd->desc = desc;
 				printf("%s found\n", brd->name != NULL ?
 				       brd->info->dev_name : "Board");
 				return 0;
@@ -256,7 +328,8 @@ static int send_file(struct board *brd)
 	buf[len + 8] = (unsigned char) ((csum & 0xff));
 	buf[len + 9] = (unsigned char) ((csum >> 8) & 0xff);
 
-	printf("%s: len = 0x%08x\n", __func__, len);
+	printf("Sending file using ep%d, length = 0x%08x\n",
+		brd->info->ep_out, len);
 
 	while (len_total > 0) {
 		ret = libusb_bulk_transfer(brd->hdl, brd->info->ep_out,
@@ -334,16 +407,15 @@ int main(int argc, char **argv)
 	cnt = libusb_get_device_list(NULL, &devs);
 	if (cnt < 0) {
 		fprintf(stderr, "Cannot get device list (%d)\n", (int) cnt);
-		ret = (int) cnt;
+		ret = cnt;
 		goto err;
 	}
 
-	/* parse config file */
 	brd.info = parse_config(bconf);
 	if (brd.info == NULL) {
 		fprintf(stderr, "Cannot parse board configuration file\n");
 		ret = -1;
-		goto err;
+		goto err_list;
 	}
 
 	ret = find_device(devs, &brd);
@@ -351,6 +423,13 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Cannot find device in bootloader mode\n");
 		goto err_list;
 	}
+
+	ret = get_epnum(&brd);
+	if (ret < 1) {
+		fprintf(stderr, "Cannot get endpoint number\n");
+		goto err_list;
+	}
+	brd.info->ep_out = ret;
 
 	ret = libusb_open(brd.dev, &brd.hdl);
 	if (ret < 0) {

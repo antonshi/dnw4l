@@ -2,7 +2,7 @@
 --------------
 This is DNW For Linux (dnw4l) application.
 
-dnw4l allows to upload binary images over USB to Samsung SoCs based boards
+dnw4l allows uploading binary images over USB to Samsung SoCs-based boards
 with USB/DNW support.
 
 
@@ -84,17 +84,16 @@ Example 3:
 
 Default board info:
 
-	ep_out = 2
+	ram_base = 0x40008000
 	idVendor = 0x04e8
 	idProduct = 0x1234;
-	bNumConfigurations = 1;
 
 To get usage help run:
 
 	$ ./dnw4l -h
 
 Note: To be able to run dnw4l as user, create appropriate udev rule.
-      Refer to 11-dnw4l.rules file as example.
+      Use 11-dnw4l.rules file as an example.
 
 6. KNOWN PROBLEMS
 -----------------
