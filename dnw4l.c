@@ -21,6 +21,22 @@
 #include "dnw4l.h"
 
 /**
+ * board_found - match connected USB device with known board.
+ * @desc: The USB device decriptor of the connected device.
+ * @info: The board description.
+ */
+static inline bool
+board_found(struct libusb_device_descriptor *desc, struct board_info *info)
+{
+	if (desc->idVendor == info->idVendor &&
+	    desc->idProduct == info->idProduct)
+
+		return true;
+
+	return false;
+}
+
+/**
  * free_info - free board descriptions;
  * @info: Head of linked list of board descriptions.
  */

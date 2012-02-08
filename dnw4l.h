@@ -58,29 +58,4 @@ struct board {
 	uint32_t			data_size;
 };
 
-static void free_info(struct board_info *head);
-static int parse_cline(char *line, struct board_info *info);
-static struct board_info * parse_config(char *file);
-static int get_epnum(struct board *brd);
-static int find_device(libusb_device **devs, struct board *brd);
-static uint16_t calc_csum(const unsigned char *data, uint32_t len);
-static int send_file(struct board *brd);
-static void print_usage(const char *name);
-
-/**
- * board_found - match connected USB device with known board.
- * @desc: The USB device decriptor of the connected device.
- * @info: The board description.
- */
-static inline bool
-board_found(struct libusb_device_descriptor *desc, struct board_info *info)
-{
-	if (desc->idVendor == info->idVendor &&
-	    desc->idProduct == info->idProduct)
-
-		return true;
-
-	return false;
-}
-
 #endif /* BOOT_USB_H */
